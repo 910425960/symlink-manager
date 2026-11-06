@@ -113,13 +113,22 @@ pip install -r requirements-build.txt
 pyinstaller SymlinkManager.spec --noconfirm --distpath dist --workpath build
 ```
 
-产物：`dist\SymlinkManager.exe`（单文件，双击即用，无控制台窗口）。
+产物：`dist\SymlinkManager.exe`（单文件，双击即用，无控制台窗口，已内嵌 6 级尺寸程序图标）。
+
+### 程序图标
+
+`app_icon.ico` 是通用几何图标「结 / Interlock」，含 16/32/48/64/128/256 六级透明尺寸。**图标要在两个地方生效，二者互不等价**：
+
+1. **EXE 文件图标**（资源管理器、快捷方式显示）：`SymlinkManager.spec` 的 `EXE(icon=...)` 写入 PE 资源 `RT_ICON` / `RT_GROUP_ICON`。
+2. **窗口标题栏 / 任务栏图标**：由 `symlink_manager.py` 的 `apply_window_icon()` 调用 `root.iconbitmap()` 设置（`-default` 让所有对话框一并继承）。PyInstaller 的 `EXE(icon=...)` **不会**自动做这一步——只配它的话标题栏仍是 Tk 默认图标。因此 ico 还需通过 `datas` 随包分发一份，运行时从 `sys._MEIPASS` 读取；源码运行时从脚本所在目录读取。
+
+`--smoketest` 的 `window_icon` 项通过 Win32 `WM_GETICON` 断言顶层窗口确实拿到图标句柄，避免"文件图标有了但窗口没变"的假通过。修改图标后重新打包即可两处同时生效；`make_icon.py` 是参数化生成器，`app_icon_preview.png` 是含深浅背景与实际尺寸矩阵的整体预览图。
 
 ### 体积优化要点（spec 已内置）
 
 - **纯标准库**，无 numpy/PIL/PyQt 等重型运行时依赖；
 - `excludes` 排除 unittest/doctest/pdb/pydoc/xmlrpc/multiprocessing/sqlite3 等无关模块；
-- 无图标、无外部资源文件（`datas=[]`），不启用 UPX（避免杀软误报）；
+- 唯一的外部数据文件是 `app_icon.ico`（`datas`，约 59 KB，压缩后更小），供窗口标题栏图标运行时读取；PE 资源图标另占约 59 KB。不启用 UPX（避免杀软误报）；
 - **自动收集 tkinter/ctypes 原生 DLL 依赖链**：Anaconda/Miniconda 的 Tk9 运行时把 `tcl90.dll`、`tcl9tk90.dll`、`libtommath.dll`、`zlib1.dll`、`ffi*.dll` 放在非标准的 `Library/bin`，PyInstaller 内置 hook 收集不全，会导致打包后 `DLL load failed while importing _tkinter/_ctypes`。spec 从 `_tkinter.pyd`/`_ctypes.pyd` 出发递归解析并补齐这些 DLL（对官方 python.org 构建无副作用，自动跳过缺失项）。
 
 > 实测：Miniconda Python 3.14 + Tk 9.0 打包产物约 **12 MB**；官方 python.org（Tk 静态布局）通常 **9–11 MB**。相较 PyQt6 方案（60–90 MB）体积约为其 1/6–1/9。
@@ -131,7 +140,10 @@ pyinstaller SymlinkManager.spec --noconfirm --distpath dist --workpath build
 | 文件 | 说明 |
 |---|---|
 | `symlink_manager.py` | 主程序（全部功能，单文件） |
-| `SymlinkManager.spec` | PyInstaller 打包配置（含 DLL 自动收集与体积优化） |
+| `SymlinkManager.spec` | PyInstaller 打包配置（含 DLL 自动收集、图标内嵌与体积优化） |
 | `build.bat` | 一键构建脚本（纯 ASCII + CRLF） |
 | `requirements-build.txt` | 构建期依赖（仅 pyinstaller） |
-| `dist/SymlinkManager.exe` | 打包产物 |
+| `app_icon.ico` | 程序图标（6 级尺寸，透明背景；同时作为 PE 资源与运行时数据） |
+| `app_icon_preview.png` | 图标整体预览图（深浅背景 / 实际尺寸 / 灰度 / 透明验证） |
+| `make_icon.py` | 图标参数化生成器（依赖 Pillow，仅生成期使用） |
+| `dist/SymlinkManager.exe` | 打包产物（单文件，已带图标） |
